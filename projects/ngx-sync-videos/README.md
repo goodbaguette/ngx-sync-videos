@@ -1,24 +1,96 @@
-# NgxSyncVideos
+# ngx-sync-videos
 
-This library was generated with [Angular CLI](https://github.com/angular/angular-cli) version 14.2.0.
+Angular library for synchronizing multiple video elements with frame-accurate control, readiness barriers, and custom UI controls.
 
-## Code scaffolding
+## Installation
 
-Run `ng generate component component-name --project ngx-sync-videos` to generate a new component. You can also use `ng generate directive|pipe|service|class|guard|interface|enum|module --project ngx-sync-videos`.
-> Note: Don't forget to add `--project ngx-sync-videos` or else it will be added to the default project in your `angular.json` file. 
+```bash
+npm install ngx-sync-videos
+```
 
-## Build
+Import `NgxSyncVideosModule` into the Angular module that declares the synchronized videos:
 
-Run `ng build ngx-sync-videos` to build the project. The build artifacts will be stored in the `dist/` directory.
+```typescript
+import { NgxSyncVideosModule } from 'ngx-sync-videos';
 
-## Publishing
+@NgModule({
+	imports: [NgxSyncVideosModule]
+})
+export class AppModule {}
+```
 
-After building your library with `ng build ngx-sync-videos`, go to the dist folder `cd dist/ngx-sync-videos` and run `npm publish`.
+## Usage
 
-## Running unit tests
+Bind one `SyncVideoConfig` object to the `syncVideo` directive on each `<video>` element. One video must be designated as the **master**.
 
-Run `ng test ngx-sync-videos` to execute the unit tests via [Karma](https://karma-runner.github.io).
+```html
+<!-- Master video -->
+<video
+	[syncVideo]="masterVideo"
+	src="master-video.mp4">
+</video>
 
-## Further help
+<!-- Slave video with a 3.2 second offset -->
+<video
+	[syncVideo]="sideVideo"
+	src="slave-video.mp4">
+</video>
 
-To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI Overview and Command Reference](https://angular.io/cli) page.
+<!-- Optional default controls -->
+<sync-ui></sync-ui>
+```
+
+```typescript
+import { SyncVideoConfig } from 'ngx-sync-videos';
+
+masterVideo: SyncVideoConfig = {
+	id: 'main-view',
+	master: true
+};
+
+sideVideo: SyncVideoConfig = {
+	id: 'side-view',
+	offset: 3.2
+};
+```
+
+## Directive API (`[syncVideo]`)
+
+The directive accepts one synchronization configuration object:
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `string` | **Required.** A unique identifier for the player. |
+| `master` | `boolean` | Designates the primary video that drives the global timeline. Defaults to `false`. |
+| `offset` | `number` | Time offset in seconds relative to the master timeline. Defaults to `0`. |
+
+The library validates the configuration at runtime before registering the video. The video source remains a regular native binding, so `src` does not belong in `SyncVideoConfig`.
+
+Native `controls` should be disabled on all synchronized videos to prevent state conflicts:
+
+```html
+<video [syncVideo]="masterVideo" src="master-video.mp4" controls="false"></video>
+```
+
+## Custom Controls
+
+Build custom controls with the public `VideoService` API:
+
+```typescript
+import { Component, inject } from '@angular/core';
+import { VideoService } from 'ngx-sync-videos';
+
+@Component({
+	selector: 'my-custom-btn',
+	template: `
+		<button (click)="video.togglePlay()">
+			Play/Pause
+		</button>
+	`
+})
+export class CustomButtonComponent {
+	protected video = inject(VideoService);
+}
+```
+
+`VideoService` also exposes observables and commands for readiness, playback state, seeking, current time, and duration.
