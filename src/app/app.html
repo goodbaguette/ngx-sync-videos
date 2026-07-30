@@ -1,0 +1,31 @@
+<div class="videos">
+  <div *ngFor="let video of videos; trackBy: trackByVideoId" class="video-container">
+    <video
+      [syncVideo]="video"
+      [src]="video.src"
+      #videoPlayer
+    ></video>
+    <div class="video-overlay">
+      {{ videoPlayer.currentTime | number:'1.2-2' }}
+      <ng-container *ngIf="!video.master">
+        ({{ (videoPlayer.currentTime - allTimes[0]) | number:'1.2-2' }}s)
+      </ng-container>
+    </div>
+  </div>
+</div>
+
+<sync-ui></sync-ui>
+
+<div class="status">
+  <div><strong>Status:</strong> {{ (allReady$ | async) ? 'Ready' : 'Loading...' }}</div>
+  <div>
+    <strong>User Intent:</strong>
+    {{ (userPlaybackState$ | async) === PlaybackState.PLAYING ? 'Playing' : 'Paused' }}
+  </div>
+  <div><strong>Master time:</strong> {{ masterTime$ | async | number:'1.1-3' }}</div>
+  <div>
+    <strong>All times:</strong>
+    <div>{{ allTimes.join(', ') }}</div>
+    <button (click)="refreshAllTimes()">sync</button>
+  </div>
+</div>

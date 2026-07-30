@@ -1,0 +1,6 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "/bin/bash": true,
+    "npx ng": true
+  }
+}
