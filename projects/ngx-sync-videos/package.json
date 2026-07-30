@@ -1,6 +1,17 @@
 {
   "name": "ngx-sync-videos",
   "version": "0.0.4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/goodbaguette/ngx-sync-videos.git"
+  },
+  "bugs": {
+    "url": "https://github.com/goodbaguette/ngx-sync-videos/issues"
+  },
+  "homepage": "https://github.com/goodbaguette/ngx-sync-videos#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
   "peerDependencies": {
     "@angular/common": "^14.2.0",
     "@angular/core": "^14.2.0",
@@ -8,5 +19,19 @@
   },
   "dependencies": {
     "tslib": "^2.3.0"
+  },
+  "release-it": {
+    "git": {
+      "commitMessage": "chore(release): v${version}",
+      "tagName": "v${version}"
+    },
+    "npm": {
+      "publish": true,
+      "publishPath": "../../dist/ngx-sync-videos"
+    },
+    "hooks": {
+      "before:init": "npm --prefix ../.. run test",
+      "after:bump": "npm --prefix ../.. run build:lib"
+    }
   }
 }

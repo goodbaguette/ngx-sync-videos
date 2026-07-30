@@ -95,3 +95,33 @@ npm run build
 ```bash
 npm run test
 ```
+
+---
+
+## Release
+
+The library is published as [`ngx-sync-videos`](https://www.npmjs.com/package/ngx-sync-videos).
+
+Before releasing, log in to the public npm registry:
+
+```bash
+npm login --registry=https://registry.npmjs.org/
+npm whoami --registry=https://registry.npmjs.org/
+```
+
+Preview a release without changing Git history or publishing:
+
+```bash
+npm run build:lib
+npm run release -- --dry-run
+```
+
+Run the release interactively:
+
+```bash
+npm run release
+```
+
+The release process runs the tests, updates the library version, builds the Angular library, creates a Git tag, and publishes `dist/ngx-sync-videos` to npm.
+
+A clean Git working tree is required before starting a release.

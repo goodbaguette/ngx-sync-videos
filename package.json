@@ -7,6 +7,8 @@
     "build": "ng build",
     "prebuild-pack": "npm run test",
     "build-pack": "npx ng build ngx-sync-videos && npm pack ./dist/ngx-sync-videos",
+    "build:lib": "ng build ngx-sync-videos",
+    "release": "cd projects/ngx-sync-videos && release-it",
     "watch": "ng build --watch --configuration development",
     "test": "npx ng test --watch=false --browsers=ChromeHeadless ngx-sync-videos --code-coverage"
   },
@@ -37,6 +39,7 @@
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.0.0",
     "ng-packagr": "^14.2.0",
+    "release-it": "^20.2.1",
     "typescript": "~4.7.2"
   }
 }
