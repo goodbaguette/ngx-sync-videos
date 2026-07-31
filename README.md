@@ -47,3 +47,12 @@ npm run release -- patch
 ```
 
 The release process runs the tests, updates the library version, builds the Angular library, creates a Git tag, and publishes `dist/ngx-sync-videos` to npm. A clean Git working tree is required.
+
+
+### Roadmap & Todos
+
+July, 2026
+- [ ] Improve documentation, especially regarding the video facade service
+- [ ] Improve provided controls component to really be used in production application (maybe also provide several theming e.g native, youtube, simple, etc...)
+- [ ] Bug: when the sync directive receive an invalid video, it'll stay in "loading forever". Not sure how to react in that way, I can think of unregistering this player as the video is KO, or maybe simply updating the readiness check to ignore 404 videos.
+- [ ] Weird behaviour: on short video, when video reach the ends the ready$ is behaving weirdly, not sure how to handle that (e.g a video can't be played because of the offset we reached the end, or in the contrary we're at the beginning and there's nothinh to be play during the negative offset)
