@@ -48,6 +48,115 @@ describe('SyncVideoDirective', () => {
     expect(fakeVideo.currentTime).toBe(target);
   });
 
+  it('clamps a target to the local video duration', () => {
+    const fakeVideo = {
+      currentTime: 5,
+      duration: 10,
+      readyState: 4,
+      seeking: false
+    } as HTMLVideoElement;
+    const applyTarget = (directive as unknown as {
+      applyTarget(video: HTMLVideoElement, target: number, force?: boolean): void;
+    }).applyTarget.bind(directive);
+
+    applyTarget(fakeVideo, -5, true);
+    expect(fakeVideo.currentTime).toBe(0);
+
+    applyTarget(fakeVideo, 20, true);
+    expect(fakeVideo.currentTime).toBe(10);
+  });
+
+  it('clamps an offset slave target to the slave duration', () => {
+    const slaveVideo = document.createElement('video');
+    const slaveDirective = new SyncVideoDirective(new ElementRef(slaveVideo), service);
+    slaveDirective.syncVideo = { id: 'slave', offset: 3.5 };
+    slaveDirective.ngOnInit();
+
+    const fakeVideo = {
+      currentTime: 0,
+      duration: 10,
+      readyState: 4,
+      seeking: false
+    } as HTMLVideoElement;
+    const applyTarget = (slaveDirective as unknown as {
+      applyTarget(video: HTMLVideoElement, target: number, force?: boolean): void;
+    }).applyTarget.bind(slaveDirective);
+
+    applyTarget(fakeVideo, 8 + 3.5, true);
+
+    expect(fakeVideo.currentTime).toBe(10);
+    slaveDirective.ngOnDestroy();
+  });
+
+  it('confirms a master seek using its locally bounded target', () => {
+    const fakeVideo = {
+      currentTime: 10,
+      duration: 10,
+      readyState: 4,
+      seeking: false
+    } as HTMLVideoElement;
+    service.seek(20);
+
+    const checkReady = (directive as unknown as {
+      checkReady(video: HTMLVideoElement): void;
+    }).checkReady.bind(directive);
+    const confirmMasterSeek = spyOn(service, 'confirmMasterSeek').and.callThrough();
+
+    checkReady(fakeVideo);
+
+    expect(confirmMasterSeek).toHaveBeenCalledWith(1, 10, 10);
+    expect(service.getActiveSeek()).toEqual({ revision: 1, time: 10 });
+  });
+
+  it('waits for a negative-offset slave to reach its playable start', () => {
+    Object.defineProperty(video, 'readyState', { value: 4 });
+    const slaveVideo = document.createElement('video');
+    Object.defineProperty(slaveVideo, 'readyState', { value: 4 });
+    const play = spyOn(slaveVideo, 'play').and.returnValue(Promise.resolve());
+    const slaveDirective = new SyncVideoDirective(new ElementRef(slaveVideo), service);
+    slaveDirective.syncVideo = { id: 'slave', offset: -3 };
+    slaveDirective.ngOnInit();
+
+    service.updateReadyState('master', true);
+    service.updateReadyState('slave', true);
+    service.updatePlaybackState(PlaybackState.PLAYING);
+
+    expect(play).not.toHaveBeenCalled();
+
+    service.updateMasterTime(2);
+    service.updateReadyState('master', true);
+    expect(play).not.toHaveBeenCalled();
+
+    service.updateMasterTime(3);
+    service.updateReadyState('master', true);
+    expect(play).toHaveBeenCalledTimes(1);
+
+    slaveDirective.ngOnDestroy();
+  });
+
+  it('keeps an ended slave paused while the master continues', () => {
+    Object.defineProperty(video, 'readyState', { value: 4 });
+    const slaveVideo = document.createElement('video');
+    Object.defineProperties(slaveVideo, {
+      readyState: { value: 4 },
+      duration: { value: 10 },
+      ended: { value: true }
+    });
+    const play = spyOn(slaveVideo, 'play').and.returnValue(Promise.resolve());
+    const slaveDirective = new SyncVideoDirective(new ElementRef(slaveVideo), service);
+    slaveDirective.syncVideo = { id: 'slave' };
+    slaveDirective.ngOnInit();
+
+    service.updateReadyState('master', true);
+    service.updateReadyState('slave', true);
+    service.updatePlaybackState(PlaybackState.PLAYING);
+    service.updateMasterTime(5);
+
+    expect(play).not.toHaveBeenCalled();
+
+    slaveDirective.ngOnDestroy();
+  });
+
   it('accepts a slave config with an offset', () => {
     const slaveVideo = document.createElement('video');
     const slaveDirective = new SyncVideoDirective(new ElementRef(slaveVideo), service);

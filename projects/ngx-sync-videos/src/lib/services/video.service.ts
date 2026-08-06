@@ -49,7 +49,8 @@ export class VideoService {
   }
 
   /**
-   * Jump to a specific time.
+   * Jump to a specific time. Finite values are clamped to the available master
+   * duration when known; invalid values are ignored with a warning.
    * This triggers the "Readiness Barrier" and will pause playback
    * until all players have buffered the new segment.
    */

@@ -149,11 +149,29 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
   }
 
   private setupSlaveLogic(video: HTMLVideoElement): void {
+    let latestMasterTime = 0;
+    let effectiveState = PlaybackState.PAUSED;
+    const syncPlayback = (): void => {
+      const hasReachedEnd = video.ended ||
+        (video.duration > 0 && video.currentTime >= video.duration);
+      const shouldPlay = effectiveState === PlaybackState.PLAYING &&
+        latestMasterTime + this.syncConfig.offset >= 0 &&
+        !hasReachedEnd;
+
+      if (shouldPlay && video.paused) {
+        video.play().catch(() => {});
+      } else if (!shouldPlay && !video.paused) {
+        video.pause();
+      }
+    };
+
     this.syncService.masterTime$.pipe(
       takeUntil(this.destroy$),
       distinctUntilChanged()
     ).subscribe(masterTime => {
+      latestMasterTime = masterTime;
       this.applyTarget(video, masterTime + this.syncConfig.offset);
+      syncPlayback();
     });
 
     this.syncService.seekRequest$.pipe(
@@ -166,11 +184,8 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
       takeUntil(this.destroy$),
       distinctUntilChanged()
     ).subscribe(state => {
-      if (state === PlaybackState.PLAYING && video.paused) {
-        video.play().catch(() => {});
-      } else if (state === PlaybackState.PAUSED && !video.paused) {
-        video.pause();
-      }
+      effectiveState = state;
+      syncPlayback();
     });
 
     merge(
@@ -196,7 +211,9 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
 
   private checkReady(video: HTMLVideoElement): void {
     const activeSeek = this.syncService.getActiveSeek();
-    const target = activeSeek ? activeSeek.time + (this.syncConfig.master ? 0 : this.syncConfig.offset) : null;
+    const target = activeSeek
+      ? this.normalizeTarget(video, activeSeek.time + (this.syncConfig.master ? 0 : this.syncConfig.offset))
+      : null;
     const isReady = video.readyState >= 3 &&
       !video.seeking &&
       (target === null || this.syncService.isReadyAtTarget(video.currentTime, target));
@@ -204,18 +221,27 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
     this.syncService.updateReadyState(this.syncConfig.id, isReady);
 
     if (this.syncConfig.master && activeSeek && isReady) {
-      this.syncService.confirmMasterSeek(activeSeek.revision, video.currentTime);
+      this.syncService.confirmMasterSeek(activeSeek.revision, video.currentTime, target ?? undefined);
     }
   }
 
   private applyTarget(video: HTMLVideoElement, target: number, force = false): void {
-    if (force || !this.syncService.isAtTarget(video.currentTime, target)) {
-      video.currentTime = target;
+    const boundedTarget = this.normalizeTarget(video, target);
+
+    if (force || !this.syncService.isAtTarget(video.currentTime, boundedTarget)) {
+      video.currentTime = boundedTarget;
       this.syncService.updateReadyState(this.syncConfig.id, false);
       return;
     }
 
     this.checkReady(video);
+  }
+
+  private normalizeTarget(video: HTMLVideoElement, target: number): number {
+    const lowerBoundedTarget = Math.max(0, target);
+    return Number.isFinite(video.duration)
+      ? Math.min(lowerBoundedTarget, video.duration)
+      : lowerBoundedTarget;
   }
 
   ngOnDestroy(): void {

@@ -107,25 +107,43 @@ export class SyncService {
   }
 
   seek(time: number): void {
+    if (typeof time !== 'number' || !Number.isFinite(time)) {
+      console.warn('[SyncService] Ignoring invalid seek time:', time);
+      return;
+    }
+
+    const duration = this.masterDurationSource.value;
+    const boundedTime = Number.isFinite(duration) && duration > 0
+      ? Math.min(Math.max(0, time), duration)
+      : Math.max(0, time);
     const request: SeekRequest = {
       revision: ++this.seekRevision,
-      time
+      time: boundedTime
     };
 
     this.activeSeek = request;
     this.confirmedMasterSeekRevision = null;
     this.resetReadiness();
     this.seekRequestSource.next(request);
-    this.masterTimeSource.next(time);
+    this.masterTimeSource.next(boundedTime);
   }
 
   getActiveSeek(): SeekRequest | null {
     return this.activeSeek;
   }
 
-  confirmMasterSeek(revision: number, time: number): void {
-    if (!this.activeSeek || this.activeSeek.revision !== revision || !this.isReadyAtTarget(time, this.activeSeek.time)) {
+  confirmMasterSeek(revision: number, time: number, target?: number): void {
+    const activeSeek = this.activeSeek;
+    const effectiveTarget = target ?? activeSeek?.time;
+
+    if (!activeSeek || activeSeek.revision !== revision || effectiveTarget === undefined ||
+      !this.isReadyAtTarget(time, effectiveTarget)) {
       return;
+    }
+
+    if (activeSeek.time !== effectiveTarget) {
+      this.activeSeek = { ...activeSeek, time: effectiveTarget };
+      this.masterTimeSource.next(effectiveTarget);
     }
 
     this.confirmedMasterSeekRevision = revision;

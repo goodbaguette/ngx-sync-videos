@@ -69,4 +69,39 @@ describe('SyncService', () => {
     expect(service.isReadyAtTarget(0.038, 0)).toBeTrue();
     expect(service.getActiveSeek()).toBeNull();
   });
+
+  it('clamps finite seeks to the master timeline bounds', () => {
+    service.updateMasterDuration(10);
+
+    service.seek(-5);
+    expect(service.getActiveSeek()).toEqual({ revision: 1, time: 0 });
+
+    service.seek(20);
+    expect(service.getActiveSeek()).toEqual({ revision: 2, time: 10 });
+  });
+
+  it('keeps the upper bound open until the master duration is known', () => {
+    service.seek(20);
+
+    expect(service.getActiveSeek()).toEqual({ revision: 1, time: 20 });
+  });
+
+  it('ignores invalid seek values and warns', () => {
+    const warning = spyOn(console, 'warn');
+
+    service.seek(NaN);
+    service.seek(Infinity);
+    service.seek('10' as unknown as number);
+
+    expect(warning).toHaveBeenCalledTimes(3);
+    expect(service.getActiveSeek()).toBeNull();
+  });
+
+  it('confirms a seek against an effective target when duration metadata arrives late', () => {
+    service.seek(20);
+
+    service.confirmMasterSeek(1, 10, 10);
+
+    expect(service.getActiveSeek()).toEqual({ revision: 1, time: 10 });
+  });
 });

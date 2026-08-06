@@ -22,8 +22,8 @@ export class App {
 
   protected videos: Array<SyncVideoConfig & { src: string }> = [
     { id: 'video-fc', src: this.videoUrl, master: true },
-    { id: 'video-context-fc', src: this.videoUrl, offset: 0.2 },
-    { id: 'video-rc', src: this.videoUrl, offset: 0.4 },
+    { id: 'video-context-fc', src: this.videoUrl, offset: -1 },
+    { id: 'video-rc', src: this.videoUrl, offset: 1 },
   ];
 
   protected trackByVideoId(_index: number, video: { id: string }): string {
