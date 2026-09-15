@@ -1,4 +1,4 @@
-import { Directive, ElementRef, Input, OnDestroy, OnInit } from '@angular/core';
+import { Directive, DoCheck, ElementRef, Input, OnDestroy, OnInit } from '@angular/core';
 import { fromEvent, merge, Subject } from 'rxjs';
 import { distinctUntilChanged, filter, takeUntil } from 'rxjs/operators';
 import { SyncVideoConfig } from '../models/sync-video-config';
@@ -7,7 +7,7 @@ import { PlaybackState, SyncService } from '../services/sync.service';
 @Directive({
   selector: 'video[syncVideo]'
 })
-export class SyncVideoDirective implements OnInit, OnDestroy {
+export class SyncVideoDirective implements OnInit, DoCheck, OnDestroy {
   @Input() syncVideo!: SyncVideoConfig;
 
   constructor(
@@ -16,6 +16,7 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
   ) {}
 
   private destroy$ = new Subject<void>();
+  private logicDestroy$ = new Subject<void>();
   private pollingInterval: ReturnType<typeof setInterval> | null = null;
   private syncConfig!: Required<SyncVideoConfig>;
 
@@ -96,30 +97,26 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
 
   private setupMasterLogic(video: HTMLVideoElement): void {
     this.syncService.masterTime$.pipe(
-      takeUntil(this.destroy$),
+      takeUntil(this.logicDestroy$),
       distinctUntilChanged()
     ).subscribe(time => {
       this.applyTarget(video, time);
     });
 
     this.syncService.seekRequest$.pipe(
-      takeUntil(this.destroy$)
+      takeUntil(this.logicDestroy$)
     ).subscribe(request => {
       this.applyTarget(video, request.time, true);
     });
 
-    if (video.duration) {
-      this.syncService.updateMasterDuration(video.duration);
-    }
+    this.updateMasterDuration(video);
 
     fromEvent(video, 'durationchange').pipe(
-      takeUntil(this.destroy$)
-    ).subscribe(() => {
-      this.syncService.updateMasterDuration(video.duration);
-    });
+      takeUntil(this.logicDestroy$)
+    ).subscribe(() => this.updateMasterDuration(video));
 
     this.syncService.effectiveState$.pipe(
-      takeUntil(this.destroy$),
+      takeUntil(this.logicDestroy$),
       distinctUntilChanged()
     ).subscribe(state => {
       if (state === PlaybackState.PLAYING && video.paused) {
@@ -130,7 +127,7 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
     });
 
     fromEvent(video, 'timeupdate').pipe(
-      takeUntil(this.destroy$)
+      takeUntil(this.logicDestroy$)
     ).subscribe(() => {
       if (!video.seeking) {
         this.syncService.updateMasterTime(video.currentTime);
@@ -138,13 +135,13 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
     });
 
     fromEvent(video, 'seeking').pipe(
-      takeUntil(this.destroy$)
+      takeUntil(this.logicDestroy$)
     ).subscribe(() => {
       this.syncService.resetReadiness();
     });
 
     fromEvent(video, 'seeked').pipe(
-      takeUntil(this.destroy$)
+      takeUntil(this.logicDestroy$)
     ).subscribe(() => this.checkReady(video));
   }
 
@@ -166,7 +163,7 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
     };
 
     this.syncService.masterTime$.pipe(
-      takeUntil(this.destroy$),
+      takeUntil(this.logicDestroy$),
       distinctUntilChanged()
     ).subscribe(masterTime => {
       latestMasterTime = masterTime;
@@ -175,13 +172,13 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
     });
 
     this.syncService.seekRequest$.pipe(
-      takeUntil(this.destroy$)
+      takeUntil(this.logicDestroy$)
     ).subscribe(request => {
       this.applyTarget(video, request.time + this.syncConfig.offset, true);
     });
 
     this.syncService.effectiveState$.pipe(
-      takeUntil(this.destroy$),
+      takeUntil(this.logicDestroy$),
       distinctUntilChanged()
     ).subscribe(state => {
       effectiveState = state;
@@ -194,7 +191,7 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
       fromEvent(video, 'stalled'),
       fromEvent(video, 'loadstart')
     ).pipe(
-      takeUntil(this.destroy$)
+      takeUntil(this.logicDestroy$)
     ).subscribe(() => {
       this.syncService.updateReadyState(this.syncConfig.id, false);
     });
@@ -205,7 +202,7 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
       fromEvent(video, 'playing'),
       fromEvent(video, 'seeked')
     ).pipe(
-      takeUntil(this.destroy$)
+      takeUntil(this.logicDestroy$)
     ).subscribe(() => this.checkReady(video));
   }
 
@@ -244,6 +241,53 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
       : lowerBoundedTarget;
   }
 
+  ngDoCheck(): void {
+    if (!this.syncConfig) {
+      return;
+    }
+
+    const nextConfig = this.validateConfig(this.syncVideo);
+    if (nextConfig.id === this.syncConfig.id &&
+      nextConfig.offset === this.syncConfig.offset &&
+      nextConfig.master === this.syncConfig.master) {
+      return;
+    }
+
+    const previousConfig = this.syncConfig;
+    const roleChanged = previousConfig.master !== nextConfig.master;
+    const idChanged = previousConfig.id !== nextConfig.id;
+    this.syncConfig = nextConfig;
+
+    if (idChanged) {
+      this.syncService.unregisterPlayer(previousConfig.id);
+      this.syncService.registerPlayer(nextConfig.id);
+    }
+
+    if (roleChanged) {
+      this.logicDestroy$.next();
+      this.logicDestroy$.complete();
+      this.logicDestroy$ = new Subject<void>();
+      this.syncService.resetReadiness();
+
+      if (nextConfig.master) {
+        this.setupMasterLogic(this.el.nativeElement);
+      } else {
+        this.setupSlaveLogic(this.el.nativeElement);
+      }
+    }
+
+    if (idChanged || roleChanged) {
+      this.syncService.updateReadyState(nextConfig.id, false);
+    }
+  }
+
+  private updateMasterDuration(video: HTMLVideoElement): void {
+    const duration = video.duration > 0
+      ? video.duration
+      : 0;
+    this.syncService.updateMasterDuration(duration);
+  }
+
   ngOnDestroy(): void {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
@@ -251,6 +295,8 @@ export class SyncVideoDirective implements OnInit, OnDestroy {
     if (this.syncConfig) {
       this.syncService.unregisterPlayer(this.syncConfig.id);
     }
+    this.logicDestroy$.next();
+    this.logicDestroy$.complete();
     this.destroy$.next();
     this.destroy$.complete();
   }

@@ -66,6 +66,8 @@ The directive accepts one synchronization configuration object:
 
 The library validates the configuration at runtime before registering the video. The video source remains a regular native binding, so `src` does not belong in `SyncVideoConfig`.
 
+The directive also reconciles runtime configuration changes, whether the bound object is replaced or its properties are mutated. Offset changes are applied on the next synchronization update. ID changes update player registration, and master-role changes rebuild the synchronization logic and readiness state.
+
 Native `controls` should be disabled on all synchronized videos to prevent state conflicts:
 
 ```html

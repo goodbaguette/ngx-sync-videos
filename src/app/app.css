@@ -13,6 +13,17 @@
   flex-direction: column;
 }
 
+.offset-control {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.offset-control input {
+  width: 5rem;
+}
+
 .status {
   display: inline-block;
   position: absolute;

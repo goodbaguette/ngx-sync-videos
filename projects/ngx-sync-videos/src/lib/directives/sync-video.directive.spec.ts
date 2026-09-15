@@ -167,6 +167,65 @@ describe('SyncVideoDirective', () => {
     slaveDirective.ngOnDestroy();
   });
 
+  it('applies an offset mutation on the next master-time update', () => {
+    const slaveVideo = document.createElement('video');
+    const config: SyncVideoConfig = { id: 'slave', offset: 1 };
+    const slaveDirective = new SyncVideoDirective(new ElementRef(slaveVideo), service);
+    slaveDirective.syncVideo = config;
+    slaveDirective.ngOnInit();
+
+    service.updateMasterTime(5);
+    expect(slaveVideo.currentTime).toBe(6);
+
+    config.offset = 2;
+    slaveDirective.ngDoCheck();
+    expect(slaveVideo.currentTime).toBe(6);
+
+    service.updateMasterTime(6);
+    expect(slaveVideo.currentTime).toBe(8);
+
+    slaveDirective.ngOnDestroy();
+  });
+
+  it('re-registers a player when its id is replaced', () => {
+    const slaveDirective = new SyncVideoDirective(
+      new ElementRef(document.createElement('video')),
+      service
+    );
+    const unregisterPlayer = spyOn(service, 'unregisterPlayer').and.callThrough();
+    const registerPlayer = spyOn(service, 'registerPlayer').and.callThrough();
+    slaveDirective.syncVideo = { id: 'slave' };
+    slaveDirective.ngOnInit();
+
+    slaveDirective.syncVideo = { id: 'renamed-slave' };
+    slaveDirective.ngDoCheck();
+
+    expect(unregisterPlayer).toHaveBeenCalledWith('slave');
+    expect(registerPlayer).toHaveBeenCalledWith('renamed-slave');
+
+    slaveDirective.ngOnDestroy();
+  });
+
+  it('rewires synchronization when the master role changes', () => {
+    const slaveVideo = document.createElement('video');
+    const config: SyncVideoConfig = { id: 'candidate', offset: 2 };
+    const candidateDirective = new SyncVideoDirective(new ElementRef(slaveVideo), service);
+    candidateDirective.syncVideo = config;
+    candidateDirective.ngOnInit();
+
+    service.updateMasterTime(4);
+    expect(slaveVideo.currentTime).toBe(6);
+
+    config.master = true;
+    config.offset = 0;
+    candidateDirective.ngDoCheck();
+    service.updateMasterTime(5);
+
+    expect(slaveVideo.currentTime).toBe(5);
+
+    candidateDirective.ngOnDestroy();
+  });
+
   it('applies defaults for omitted optional config values', () => {
     const defaultVideo = document.createElement('video');
     const defaultDirective = new SyncVideoDirective(new ElementRef(defaultVideo), service);

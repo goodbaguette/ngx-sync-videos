@@ -30,6 +30,18 @@ export class App {
     return video.id;
   }
 
+  protected updateOffset(video: SyncVideoConfig, event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const offset = input.valueAsNumber;
+
+    if (!Number.isFinite(offset)) {
+      input.value = String(video.offset ?? 0);
+      return;
+    }
+
+    video.offset = offset;
+  }
+
   refreshAllTimes() {
     const videos = Array.from(document.querySelectorAll('video'));
     this.allTimes = videos.map(video => Math.round(video.currentTime * 100) / 100);

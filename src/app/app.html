@@ -11,6 +11,16 @@
         ({{ (videoPlayer.currentTime - allTimes[0]) | number:'1.2-2' }}s)
       </ng-container>
     </div>
+    <label *ngIf="!video.master" class="offset-control" [attr.for]="video.id + '-offset'">
+      Offset (s)
+      <input
+        [id]="video.id + '-offset'"
+        type="number"
+        step="0.1"
+        [value]="video.offset ?? 0"
+        (change)="updateOffset(video, $event)"
+      />
+    </label>
   </div>
 </div>
 
