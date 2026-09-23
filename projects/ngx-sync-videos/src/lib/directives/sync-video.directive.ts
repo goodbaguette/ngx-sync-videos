@@ -19,6 +19,8 @@ export class SyncVideoDirective implements OnInit, DoCheck, OnDestroy {
   private logicDestroy$ = new Subject<void>();
   private pollingInterval: ReturnType<typeof setInterval> | null = null;
   private syncConfig!: Required<SyncVideoConfig>;
+  private playerRegistered = false;
+  private mediaFailed = false;
 
   ngOnInit(): void {
     this.syncConfig = this.validateConfig(this.syncVideo);
@@ -32,14 +34,13 @@ export class SyncVideoDirective implements OnInit, DoCheck, OnDestroy {
       );
     }
 
-    this.syncService.registerPlayer(this.syncConfig.id);
+    this.registerPlayer();
 
     merge(
       fromEvent(video, 'waiting'),
       fromEvent(video, 'seeking'),
       fromEvent(video, 'stalled'),
-      fromEvent(video, 'loadstart'),
-      fromEvent(video, 'error')
+      fromEvent(video, 'loadstart')
     ).pipe(
       takeUntil(this.destroy$)
     ).subscribe(() => {
@@ -48,7 +49,12 @@ export class SyncVideoDirective implements OnInit, DoCheck, OnDestroy {
 
     merge(
       fromEvent(video, 'canplay'),
-      fromEvent(video, 'canplaythrough'),
+      fromEvent(video, 'canplaythrough')
+    ).pipe(
+      takeUntil(this.destroy$)
+    ).subscribe(() => this.handlePlayable(video));
+
+    merge(
       fromEvent(video, 'playing'),
       fromEvent(video, 'seeked'),
       fromEvent(video, 'timeupdate').pipe(filter(() => video.readyState >= 3))
@@ -56,14 +62,14 @@ export class SyncVideoDirective implements OnInit, DoCheck, OnDestroy {
       takeUntil(this.destroy$)
     ).subscribe(() => this.checkReady(video));
 
-    this.pollingInterval = setInterval(() => this.checkReady(video), 500);
+    fromEvent(video, 'error').pipe(
+      takeUntil(this.destroy$)
+    ).subscribe(() => this.handleMediaError());
+
+    this.startPolling(video);
     this.checkReady(video);
 
-    if (this.syncConfig.master) {
-      this.setupMasterLogic(video);
-    } else {
-      this.setupSlaveLogic(video);
-    }
+    this.setupCurrentLogic(video);
   }
 
   private validateConfig(config: unknown): Required<SyncVideoConfig> {
@@ -93,6 +99,74 @@ export class SyncVideoDirective implements OnInit, DoCheck, OnDestroy {
       offset: candidate.offset ?? 0,
       master: candidate.master ?? false
     };
+  }
+
+  private setupCurrentLogic(video: HTMLVideoElement): void {
+    if (this.syncConfig.master) {
+      this.setupMasterLogic(video);
+    } else if (!this.mediaFailed) {
+      this.setupSlaveLogic(video);
+    }
+  }
+
+  private registerPlayer(): void {
+    if (!this.playerRegistered) {
+      this.syncService.registerPlayer(this.syncConfig.id);
+      this.playerRegistered = true;
+    }
+  }
+
+  private unregisterPlayer(id = this.syncConfig.id): void {
+    if (this.playerRegistered) {
+      this.syncService.unregisterPlayer(id);
+      this.playerRegistered = false;
+    }
+  }
+
+  private startPolling(video: HTMLVideoElement): void {
+    if (!this.pollingInterval) {
+      this.pollingInterval = setInterval(() => this.checkReady(video), 500);
+    }
+  }
+
+  private stopPolling(): void {
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = null;
+    }
+  }
+
+  private resetLogicSubscriptions(): void {
+    this.logicDestroy$.next();
+    this.logicDestroy$.complete();
+    this.logicDestroy$ = new Subject<void>();
+  }
+
+  private handleMediaError(): void {
+    this.mediaFailed = true;
+
+    if (this.syncConfig.master) {
+      this.syncService.updateReadyState(this.syncConfig.id, false);
+      return;
+    }
+
+    this.stopPolling();
+    this.resetLogicSubscriptions();
+    this.unregisterPlayer();
+  }
+
+  private handlePlayable(video: HTMLVideoElement): void {
+    if (this.mediaFailed) {
+      this.mediaFailed = false;
+
+      if (!this.playerRegistered) {
+        this.registerPlayer();
+        this.startPolling(video);
+        this.setupCurrentLogic(video);
+      }
+    }
+
+    this.checkReady(video);
   }
 
   private setupMasterLogic(video: HTMLVideoElement): void {
@@ -207,6 +281,10 @@ export class SyncVideoDirective implements OnInit, DoCheck, OnDestroy {
   }
 
   private checkReady(video: HTMLVideoElement): void {
+    if (this.mediaFailed || !this.playerRegistered) {
+      return;
+    }
+
     const activeSeek = this.syncService.getActiveSeek();
     const target = activeSeek
       ? this.normalizeTarget(video, activeSeek.time + (this.syncConfig.master ? 0 : this.syncConfig.offset))
@@ -258,22 +336,25 @@ export class SyncVideoDirective implements OnInit, DoCheck, OnDestroy {
     const idChanged = previousConfig.id !== nextConfig.id;
     this.syncConfig = nextConfig;
 
-    if (idChanged) {
+    if (idChanged && this.playerRegistered) {
       this.syncService.unregisterPlayer(previousConfig.id);
-      this.syncService.registerPlayer(nextConfig.id);
+      this.playerRegistered = false;
     }
 
     if (roleChanged) {
-      this.logicDestroy$.next();
-      this.logicDestroy$.complete();
-      this.logicDestroy$ = new Subject<void>();
+      this.resetLogicSubscriptions();
       this.syncService.resetReadiness();
+    }
 
-      if (nextConfig.master) {
-        this.setupMasterLogic(this.el.nativeElement);
-      } else {
-        this.setupSlaveLogic(this.el.nativeElement);
+    if (nextConfig.master || !this.mediaFailed) {
+      this.registerPlayer();
+      if (roleChanged) {
+        this.startPolling(this.el.nativeElement);
+        this.setupCurrentLogic(this.el.nativeElement);
       }
+    } else {
+      this.stopPolling();
+      this.unregisterPlayer();
     }
 
     if (idChanged || roleChanged) {
@@ -289,11 +370,9 @@ export class SyncVideoDirective implements OnInit, DoCheck, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-    }
+    this.stopPolling();
     if (this.syncConfig) {
-      this.syncService.unregisterPlayer(this.syncConfig.id);
+      this.unregisterPlayer();
     }
     this.logicDestroy$.next();
     this.logicDestroy$.complete();

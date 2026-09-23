@@ -68,6 +68,8 @@ The library validates the configuration at runtime before registering the video.
 
 The directive also reconciles runtime configuration changes, whether the bound object is replaced or its properties are mutated. Offset changes are applied on the next synchronization update. ID changes update player registration, and master-role changes rebuild the synchronization logic and readiness state.
 
+If a slave video emits an `error` event, it is removed from synchronization so the remaining videos can continue playing. The failed slave is re-registered when it later emits `canplay`, using its current configuration. A failed master remains registered and not ready, so it continues to block playback.
+
 Native `controls` should be disabled on all synchronized videos to prevent state conflicts:
 
 ```html

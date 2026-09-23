@@ -157,6 +157,69 @@ describe('SyncVideoDirective', () => {
     slaveDirective.ngOnDestroy();
   });
 
+  it('removes a failed slave from the readiness barrier', () => {
+    const slaveVideo = document.createElement('video');
+    const slaveDirective = new SyncVideoDirective(new ElementRef(slaveVideo), service);
+    slaveDirective.syncVideo = { id: 'slave' };
+    slaveDirective.ngOnInit();
+
+    let allReady = false;
+    const effectiveStates: PlaybackState[] = [];
+    service.allReady$.subscribe(isReady => allReady = isReady);
+    service.effectiveState$.subscribe(state => effectiveStates.push(state));
+    service.updateReadyState('master', true);
+    service.updateReadyState('slave', true);
+    expect(allReady).toBeTrue();
+
+    slaveVideo.dispatchEvent(new Event('error'));
+
+    expect(allReady).toBeTrue();
+    service.updatePlaybackState(PlaybackState.PLAYING);
+    expect(effectiveStates[effectiveStates.length - 1]).toBe(PlaybackState.PLAYING);
+
+    slaveDirective.ngOnDestroy();
+  });
+
+  it('keeps a failed master in the readiness barrier', () => {
+    service.updateReadyState('master', true);
+
+    let allReady = false;
+    service.allReady$.subscribe(isReady => allReady = isReady);
+    expect(allReady).toBeTrue();
+
+    video.dispatchEvent(new Event('error'));
+
+    expect(allReady).toBeFalse();
+  });
+
+  it('recovers a failed slave with its latest runtime config', () => {
+    const slaveVideo = document.createElement('video');
+    Object.defineProperty(slaveVideo, 'readyState', { value: 4 });
+    const config: SyncVideoConfig = { id: 'slave', offset: 1 };
+    const slaveDirective = new SyncVideoDirective(new ElementRef(slaveVideo), service);
+    const registerPlayer = spyOn(service, 'registerPlayer').and.callThrough();
+    slaveDirective.syncVideo = config;
+    slaveDirective.ngOnInit();
+
+    service.updateReadyState('master', true);
+    service.updateReadyState('slave', true);
+    slaveVideo.dispatchEvent(new Event('error'));
+
+    config.id = 'recovered-slave';
+    config.offset = 2;
+    slaveDirective.ngDoCheck();
+    slaveVideo.dispatchEvent(new Event('canplay'));
+
+    service.updateReadyState('recovered-slave', true);
+    expect(registerPlayer).toHaveBeenCalledWith('recovered-slave');
+    expect((slaveDirective as unknown as {
+      syncConfig: Required<SyncVideoConfig>;
+    }).syncConfig).toEqual({ id: 'recovered-slave', offset: 2, master: false });
+    expect(service.getActiveSeek()).toBeNull();
+
+    slaveDirective.ngOnDestroy();
+  });
+
   it('accepts a slave config with an offset', () => {
     const slaveVideo = document.createElement('video');
     const slaveDirective = new SyncVideoDirective(new ElementRef(slaveVideo), service);
