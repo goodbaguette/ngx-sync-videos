@@ -13,8 +13,8 @@
     "registry": "https://registry.npmjs.org"
   },
   "peerDependencies": {
-    "@angular/common": "^14.2.0",
-    "@angular/core": "^14.2.0",
+    "@angular/common": ">=14.2.0",
+    "@angular/core": ">=14.2.0",
     "rxjs": "^6.5.3 || ^7.4.0"
   },
   "dependencies": {
